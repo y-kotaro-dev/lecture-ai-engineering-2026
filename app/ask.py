@@ -1,10 +1,12 @@
-"""第1回: 素のLLMに1回だけ質問するスクリプト。
+"""第1回: 素のLLMに会話履歴を保って質問するスクリプト。
 
 使い方:
     uv run python -m app.ask "LoRAとは何ですか？"
-    uv run python -m app.ask            # 質問を省略すると、講座に固有の質問をする
+    uv run python -m app.ask            # 講座に固有の質問から会話を始める
 
-ツールも会話履歴も持たない「素の」呼び出し。
+終了するには exit、quit、または 終了 と入力する。
+
+ツールは持たない「素の」呼び出しだが、会話履歴は保持する。
 講座に固有のことを聞くと、「分からない」と答えるか、一般論でもっともらしく答える
 （講座の実際とは違う）ことを確かめよう。
 （第3回で、用語集を検索できるエージェントにして改善する）
@@ -21,9 +23,8 @@ from app.config import MODEL, api_error_message, get_api_key
 DEFAULT_QUESTION = "AIE2026の講座の宿題にある「3レベル」とは何ですか？"
 
 
-def ask(question: str) -> str:
-    client = genai.Client(api_key=get_api_key())
-    response = client.models.generate_content(model=MODEL, contents=question)
+def ask(chat, question: str) -> str:
+    response = chat.send_message(question)
 
     usage = response.usage_metadata
     input_tokens = usage.prompt_token_count if usage else None
@@ -37,14 +38,25 @@ def ask(question: str) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="素のLLMに質問する")
+    parser = argparse.ArgumentParser(description="会話履歴を保って素のLLMに質問する")
     parser.add_argument("question", nargs="?", default=DEFAULT_QUESTION)
     args = parser.parse_args()
 
     print(f"[model] {MODEL}")
-    print(f"[質問] {args.question}\n")
     try:
-        print(ask(args.question))
+        client = genai.Client(api_key=get_api_key())
+        chat = client.chats.create(model=MODEL)
+        question = args.question
+        while True:
+            print(f"[質問] {question}\n")
+            print(ask(chat, question))
+            try:
+                question = input("\n次の質問（終了: exit）> ").strip()
+            except EOFError:
+                print()
+                break
+            if question.lower() in {"exit", "quit", "終了"}:
+                break
     except errors.APIError as e:
         print(api_error_message(e.code, e.message))
         raise SystemExit(1)
